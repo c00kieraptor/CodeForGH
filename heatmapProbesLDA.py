@@ -40,8 +40,8 @@ for COLUMN in regScrPrTopicDrpd.columns[1:]:
 dfForHM.to_csv("ProbeTopicScore.csv", index=True)
 
 
-
-regScrPrTopicDrpd[(regScrPrTopicDrpd[COLUMN]> Cutoff)
+"""
+regScrPrTopicDrpd[(regScrPrTopicDrpd[COLUMN]> Cutoff)]
 
 
 
@@ -70,3 +70,4 @@ g = sns.violinplot(x=regScrSupMedian["Unnamed: 0"], y = regScrSupMedian["Scores_
 
 
 #regScrPrTopicDrpd.loc[regScrPrTopicDrpd[COLUMN] < Cutoff]
+"""
