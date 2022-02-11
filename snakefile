@@ -61,6 +61,17 @@ rule FromRawToCis:
     script:
         "full.R"
 
+#Python to make violinplots from seaborn sort from CpGs and patients. 
+rule seabornViolin:
+    input:
+        methTab = "/storage/mathelierarea/processed/petear/analysis/{project}/MethylTable_{project}_{tfactor}.csv",
+        regScrNorm = "/storage/mathelierarea/processed/petear/analysis/{project}/RegScrPrtopic_{project}_{tfactor}.csv",
+        regScrUnrm = "/storage/mathelierarea/processed/petear/analysis/{project}/RegAssigUnormal_{project}_{tfactor}.csv",
+        topicAssig = "/storage/mathelierarea/processed/petear/analysis/{project}/topicAssigToPatient_{project}_{tfactor}.csv",
+    output:
+        "/storage/mathelierarea/processed/petear/analysis/{project}/Violin_{project}_{tfactor}.pdf"
+        "/storage/mathelierarea/processed/petear/analysis/{project}/ProbeTopicScore_{project}_{tfactor}.csv"
+
 #CSVs can be big so this rule compresses the CSV to XZ to save space. 
 rule MethTabl_CSVtoXZ:
     input:
