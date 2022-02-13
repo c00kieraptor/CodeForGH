@@ -9,13 +9,20 @@ import lzma
 #####
 
 
-####Read tables####
+####Read tables#######################
+"""
 methTable = pd.read_csv("MethylTable_BRCA-US_FULL.csv.xz", delimiter=",", compression="xz")
 regAssigUnormal = pd.read_csv("RegAssigUnormal_BRCA-US_FULL.csv", delimiter=",")
 regScrPrtopic = pd.read_csv("RegScrPrtopic_BRCA-US_FULL.csv", delimiter=",")
 topicAssigToPatient = pd.read_csv("topicAssigToPatient_BRCA-US_FULL.csv", delimiter=",")
 
+"""
+methTable = pdf.read_csv(snakemake.input[methTab], delimiter=",", compression="xz")
+regScrPrtopic = pd.read_csv(snakemake.input[regScrNorm], delimiter=",")
+regAssigUnormal = pd.read_csv(snakemake.input[regScrUnrm], delimiter=",")
+topicAssigToPatient = pd.read_csv(snakemake.input[topicAssig], delimiter=",")
 
+####################################
 
 
 """
