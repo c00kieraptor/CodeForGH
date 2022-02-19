@@ -24,10 +24,73 @@ topicAssigToPatient = pd.read_csv(snakemake.input[topicAssig], delimiter=",")
 
 ####################################
 
+#assign patients to topics, and topics to CpGs, so you can go from patients to CpGs
 
 """
-Following to find the donors that have the highest topic assignment:
+Following to find top topics per donor:
 """
+
+#Remove unnamed column with topic numbers and set those as rownames
+topicAsPatRownames = topicAssigToPatient.set_index("Unnamed: 0")
+topicAsPatRownames.index.names = [None]
+#topicAsPatRownames["mean"] = topicAsPatRownames.mean(axis=1)
+
+#subract mean of each 
+topicPatMean = topicAsPatRownames.sub(topicAsPatRownames.mean(axis=1), axis=0)
+
+topicPatDict = {}
+topicPatdictValList = []
+#index = key, i = value
+
+for i, row in topicPatMean.T.iterrows():
+	topicPatdictValList.append(i)
+	index = row.idxmax()
+	topicPatDict[index] = topicPatdictValList
+
+
+
+
+
+
+
+
+
+
+#numTopics = len(topicAssigToPatient.index)
+TopicListKeys = topicAssigToPatient["Unnamed: 0"].tolist() 
+#create empty dict with topic number as keys
+topicDict = {key: None for key in TopicListKeys}
+
+
+
+for column in topicPatMean:
+	cola = column
+	index = topicPatMean.groupby[cola].idxmax()
+	print(index)
+
+data.groupby(['Company','Product','Industry'])['ROI'].idxmax()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 #Remove unnamed column with topic numbers and set those as rownames
 topicAsPatRownames = topicAssigToPatient.set_index("Unnamed: 0")
 topicAsPatRownames.index.names = [None]
