@@ -4,29 +4,29 @@ library(Amelia)
 library(tidyverse)
 
 
-Amp <- read.table(snakemake@input[["CpG"]], header=TRUE, sep="\t")
+methTable <- read.table(snakemake@input[["CpG"]], header=TRUE, sep="\t")
 Coords <- read.table(snakemake@input[["coords"]])
 
 mergedCol <- unite(Coords, comb, V2, V3, sep = "-", remove = TRUE, na.rm = FALSE)
 mergedChrDone <- unite(mergedCol, Coords, V1, comb, sep = ":", remove = TRUE, na.rm = FALSE)
-
-names(Amp)[names(Amp) == "X"] <- "probes"
-Amp$probes <- as.character(Amp$probes)
+names(methTable)[names(methTable) == "X"] <- "probes"
+methTable$probes <- as.character(methTable$probes)
 
 
 names(mergedChrDone)[names(mergedChrDone) == "V4"] <- "probes"
 mergedChrDone$probes <-as.character(mergedChrDone$probes)
 
-merged <- left_join(mergedChrDone, Amp, by = c("probes"))
+methTable <- left_join(mergedChrDone, methTable, by = c("probes"))
 
-mergedSansprobes <- within(merged, rm("probes"))
+methTable <- within(methTable, rm("probes"))
 
-mergedSansprobes <- mergedSansprobes[which(rowMeans(!is.na(mergedSansprobes)) > 0.5), ]
+methTable <- methTable[which(rowMeans(!is.na(methTable)) > 0.5), ]
+
 
 idvars = c('Coords')
 
 ### Follows is a loop for bounds to prevent AmeliaII to make some negative values in the dataframe
-nc = ncol(mergedSansprobes)
+nc = ncol(methTable)
 
 loopyBound = rbind(c(2, 0, 1))
 
@@ -37,14 +37,14 @@ loopyBound = rbind(loopyBound, c(n, 0, 1))
 n=n+1
 }
 
-Amp2 <- amelia(mergedSansprobes, m = 1, idvars = idvars, bound = loopyBound)
+methTable <- amelia(methTable, m = 1, idvars = idvars)
 
-imputedMatrix <- Amp2$imputations[[1]]
+methTable <- methTable$imputations[[1]]
 
-imputedMatrix2 <- imputedMatrix[,-1]
-rownames(imputedMatrix2) <- imputedMatrix[,1]
+methTable2 <- methTable[,-1]
+rownames(methTable2) <- methTable[,1]
 
-write.csv(imputedMatrix2, file=snakemake@output[[1]])
+write.csv(methTable2, file=snakemake@output[[1]])
 #############PrepMeta###############
 
 samplemeta <- read.table(snakemake@input[["premeta"]], header=TRUE, sep="\t")
@@ -55,7 +55,7 @@ samplemeta <- read.table(snakemake@input[["premeta"]], header=TRUE, sep="\t")
 
 
 ###BRCA_FULL
-metaframe <- samplemeta %>% select(donor_id, PAM50, ER.Status)
+metaframe <- samplemeta %>% select(donor_id, PAM50, ER.Status, PAM50_genefu, PR.Status, HER2.Final.Status)
 
 
 #replace NA with string
@@ -83,7 +83,15 @@ meta <- meta2 %>% select(-1)
 ###########RemoveNonMetaCpGRows############
 
 drop <- c(rownames(meta))
-CpG.sample.tab = imputedMatrix2[,(names(imputedMatrix2) %in% drop)]
+CpG.sample.tab = methTable2[,(names(methTable2) %in% drop)]
+
+#preserve memory:
+rm(methTable)
+rm(Coords)
+rm(samplemeta)
+rm(metaframe)
+rm(metaframe.c)
+rm(metaSD)
 
 
 ############CISTOPIC########
@@ -94,8 +102,6 @@ PDF.name <- snakemake@output[[2]]
 
 #Removing NAs by deletion: (CHECK IF SHOULD USE AMPUTATION!!!
 #cpg <- CpG.sample.tab[complete.cases(CpG.sample.tab), ]
-#Finding what to use from meta:
-metacolnames <- colnames(meta)
 
 cisTopicObject <- createcisTopicObject(is.acc=0.5, min.cells=0, min.regions=0, count.matrix=data.frame(CpG.sample.tab)) #Set is.acc=0 or is.acc=0.01 | min.cells=0, min.regions=0
 
@@ -107,32 +113,145 @@ cisTopicObject <- runWarpLDAModels(cisTopicObject, topic=c(4:18), seed=123, nCor
 pdf(PDF.name, height=10, width=15)
 #cisTopicObject <- selectModel(cisTopicObject, type='perplexity')
 cisTopicObject <- selectModel(cisTopicObject)
-cisTopicObject <- runUmap(cisTopicObject, target ='cell')
-cellTopicHeatmap(cisTopicObject, col.low="blue", col.mid="white",col.high="red", colorBy=c("PAM50","ER.Status"))
-cellTopicHeatmap(cisTopicObject, method = "Probability",col.low="blue", col.mid="white",col.high="red", colorBy=c("PAM50","ER.Status"))
+
+########## fICA ########
+library(fastICA)
+
+t_cisTo <- t(cisTopicObject@selected.model$document_expects)
+donorMat  <- matrix(rownames(t_cisTo))
+fica <- fastICA(t_cisTo, n.comp= 2, row.norm=FALSE, method = "C")
+
+
+ficaS <- fica$S
+
+colnames(ficaS) <- c("V1", "V2")
+rownames(ficaS) <- c(donorMat)
+
+metaficaS <- meta[rownames(meta) %in% rownames(ficaS), ]
+
+metaficaS <- as.data.frame(metaficaS)
+ficaS <- as.data.frame(ficaS)
+ficaSMerge <- merge(metaficaS, ficaS, by = 0)
+
+library(RColorBrewer)
+################# GGPLOT2 for PAM50 ################
+ficaSMergePAMSansNA <- ficaSMerge[!(ficaSMerge$PAM50=="NA"),]
+
+figficaSPAM <- ggplot(ficaSMerge, aes(V1, V2))
+figficaSPAM + geom_point(aes(colour = factor(PAM50)), size = 2) + scale_color_brewer(palette = "Set1") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank())
+
+figficaSPAMSansNA <- ggplot(ficaSMergePAMSansNA, aes(V1, V2))
+figficaSPAMSansNA + geom_point(aes(colour = factor(PAM50)), size = 2) + scale_color_brewer(palette = "Set1") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank())
+
+################# GGPLOT2 for ER.Status ################
+
+ficaSMergeERSansNA <- ficaSMerge[!(ficaSMerge$ER.Status=="NA"),]
+
+figficaSER <- ggplot(ficaSMerge, aes(V1, V2))
+figficaSER + geom_point(aes(colour = factor(ER.Status)), size = 2) + scale_color_brewer(palette = "Set1") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank())
+
+figficaSERSansNA <- ggplot(ficaSMergeERSansNA, aes(V1, V2))
+figficaSERSansNA + geom_point(aes(colour = factor(ER.Status)), size = 2) + scale_color_brewer(palette = "Set1") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank())
+
+
+################# GGPLOT2 for PAM50_genefu ################
+ficaSMergePGSansNA <- ficaSMerge[!(ficaSMerge$PAM50_genefu=="NA"),]
+
+figficaSPG <- ggplot(ficaSMerge, aes(V1, V2))
+figficaSPG + geom_point(aes(colour = factor(PAM50_genefu)), size = 2) + scale_color_brewer(palette = "Set1") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank())
+
+figficaSPGSansNA <- ggplot(ficaSMergePGSansNA, aes(V1, V2))
+figficaSPGSansNA + geom_point(aes(colour = factor(PAM50_genefu)), size = 2) + scale_color_brewer(palette = "Set1") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank())
+
+
+################# GGPLOT2 for PR.Status ################
+ficaSMergePRSansNA <- ficaSMerge[!(ficaSMerge$PR.Status=="NA"),]
+
+figficaSPR <- ggplot(ficaSMerge, aes(V1, V2))
+figficaSPR + geom_point(aes(colour = factor(PR.Status)), size = 2) + scale_color_brewer(palette = "Set1") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank())
+
+figficaSPRSansNA <- ggplot(ficaSMergePRSansNA, aes(V1, V2))
+figficaSPRSansNA + geom_point(aes(colour = factor(PR.Status)), size = 2) + scale_color_brewer(palette = "Set1") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank())
+
+
+################# GGPLOT2 for HER2.Final.Status ################
+ficaSMergeHER2SansNA <- ficaSMerge[!(ficaSMerge$HER2.Final.Status=="NA"),]
+
+figficaSHER2 <- ggplot(ficaSMerge, aes(V1, V2))
+figficaSHER2 + geom_point(aes(colour = factor(HER2.Final.Status)), size = 2) + scale_color_brewer(palette = "Set1") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank())
+
+figficaSHER2SansNA <- ggplot(ficaSMergeHER2SansNA, aes(V1, V2))
+figficaSHER2SansNA + geom_point(aes(colour = factor(HER2.Final.Status)), size = 2) + scale_color_brewer(palette = "Set1") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(), panel.background = element_blank())
+
+
+######################################################
+#####Umap and further cisTopic
+######################################################
+plot(NA, xlim=c(0,5), ylim=c(0,5), bty='n',
+     xaxt='n', yaxt='n', xlab='', ylab='')
+text(1,4,"regionScore by NormTop", pos=4)
+
+
+cisTopicObject <- getRegionsScores(cisTopicObject, method='NormTop', scale=TRUE)
+#par(mfrow=c(3,5))
+cisTopicObject <- binarizecisTopics(cisTopicObject, thrP=0.975, plot=TRUE)
+
+
+cisTopicObject <- GREAT(cisTopicObject, genome='hg19', fold_enrichment=2, geneHits=1, sign=0.05, request_interval=10)
+ontologyDotPlot(cisTopicObject, top=5, var.y='name', order.by='Binom_Adjp_BH')
+
+
+# plot(NA, xlim=c(0,5), ylim=c(0,5), bty='n',
+#      xaxt='n', yaxt='n', xlab='', ylab='')
+# topicNumber <- tail(strsplit(getwd() ,split="/")[[1]],1)
+#text(1,4, getwd() , pos=4)
+
+#should notify snakemake that pdf is output
+cisTopicObject <- runUmap(cisTopicObject, target="cell", n_components=3)
+plotFeatures(cisTopicObject, method='Umap', target='cell', topic_contr=NULL, colorBy=c("PAM50","ER.Status","PAM50_genefu","PR.Status","HER2.Final.Status"), cex.legend = 0.8, factor.max=.75, dim=3, legend=FALSE, cex.dot = 1.5)
 
 plot(NA, xlim=c(0,5), ylim=c(0,5), bty='n',
      xaxt='n', yaxt='n', xlab='', ylab='')
-text(1,4,"Colored by metadata", pos=4)
+text(1,4,"Region by probability (by NormTop)", pos=4)
 
-#par(mfrow=c(1,2)) |changed intervals to 20
-plotFeatures(cisTopicObject, method='Umap', target='cell', topic_contr=NULL, colorBy=c("PAM50","ER.Status"), cex.legend = 0.8, factor.max=.75, dim=2, legend=FALSE, cex.dot = 1.5)
-###
+cisTopicObject <- runUmap(cisTopicObject, target ='region')
+
+plotFeatures(cisTopicObject, method='Umap', target='region', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=FALSE, col.low='blue', col.mid='white', col.high='red', cex.dot = 1.5)
+
+cisTopicObject <- runUmap(cisTopicObject, target ='region', n_components=3)
+
+plotFeatures(cisTopicObject, method='Umap', target='region', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=3, legend=FALSE, col.low='blue', col.mid='white', col.high='red', cex.dot = 1.5)
 
 plot(NA, xlim=c(0,5), ylim=c(0,5), bty='n',
      xaxt='n', yaxt='n', xlab='', ylab='')
-text(1,4,"Topic by probability", pos=4)
+text(1,4,"Region by Z-score (by NormTop)", pos=4)
 
-#par(mfrow=c(3,3))
-plotFeatures(cisTopicObject, method='Umap', target='cell', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=FALSE,col.low='blue', col.mid='white', col.high='red', cex.dot = 1.5)
-###
+cisTopicObject <- runUmap(cisTopicObject, target ='region')
+
+plotFeatures(cisTopicObject, method='Umap', target='region', topic_contr='Z-score', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=FALSE, col.low='blue', col.mid='white', col.high='red', cex.dot = 1.5)
+
+cisTopicObject <- runUmap(cisTopicObject, target ='region', n_components=3)
+
+plotFeatures(cisTopicObject, method='Umap', target='region', topic_contr='Z-score', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=3, legend=FALSE, col.low='blue', col.mid='white', col.high='red', cex.dot = 1.5)
+
+
 plot(NA, xlim=c(0,5), ylim=c(0,5), bty='n',
      xaxt='n', yaxt='n', xlab='', ylab='')
-text(1,4,"Topic by Z-score", pos=4)
+text(1,4,"Region by NormTop (by NormTop)", pos=4)
 
-#par(mfrow=c(3,3))
-plotFeatures(cisTopicObject, method='Umap', target='cell', topic_contr='Z-score', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=FALSE,col.low='blue', col.mid='white', col.high='red', cex.dot = 1.5)
+cisTopicObject <- runUmap(cisTopicObject, target ='region')
 
+plotFeatures(cisTopicObject, method='Umap', target='region', topic_contr='NormTop', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=FALSE, col.low='blue', col.mid='white', col.high='red', cex.dot = 1.5)
+
+cisTopicObject <- runUmap(cisTopicObject, target ='region', n_components=3)
+
+plotFeatures(cisTopicObject, method='Umap', target='region', topic_contr='NormTop', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=3, legend=FALSE, col.low='blue', col.mid='white', col.high='red', cex.dot = 1.5)
+
+
+######################################################
+plot(NA, xlim=c(0,5), ylim=c(0,5), bty='n',
+     xaxt='n', yaxt='n', xlab='', ylab='')
+text(1,4,"regionScore by probability", pos=4)
 
 cisTopicObject <- getRegionsScores(cisTopicObject, method='Probability', scale=TRUE)
 #par(mfrow=c(3,5))
@@ -150,21 +269,44 @@ ontologyDotPlot(cisTopicObject, top=5, var.y='name', order.by='Binom_Adjp_BH')
 
 #should notify snakemake that pdf is output
 cisTopicObject <- runUmap(cisTopicObject, target="cell", n_components=3)
-plotFeatures(cisTopicObject, method='Umap', target='cell', topic_contr=NULL, colorBy=c("PAM50","ER.Status"), cex.legend = 0.8, factor.max=.75, dim=3, legend=FALSE, cex.dot = 1.5)
+plotFeatures(cisTopicObject, method='Umap', target='cell', topic_contr=NULL, colorBy=c("PAM50","ER.Status","PAM50_genefu","PR.Status","HER2.Final.Status"), cex.legend = 0.8, factor.max=.75, dim=3, legend=FALSE, cex.dot = 1.5)
+
+plot(NA, xlim=c(0,5), ylim=c(0,5), bty='n',
+     xaxt='n', yaxt='n', xlab='', ylab='')
+text(1,4,"Region by probability (by probability)", pos=4)
 
 cisTopicObject <- runUmap(cisTopicObject, target ='region')
 
-plot(NA, xlim=c(0,5), ylim=c(0,5), bty='n',
-     xaxt='n', yaxt='n', xlab='', ylab='')
-text(1,4,"Region by probability", pos=4)
-
 plotFeatures(cisTopicObject, method='Umap', target='region', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=FALSE, col.low='blue', col.mid='white', col.high='red', cex.dot = 1.5)
 
+cisTopicObject <- runUmap(cisTopicObject, target ='region', n_components=3)
+
+plotFeatures(cisTopicObject, method='Umap', target='region', topic_contr='Probability', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=3, legend=FALSE, col.low='blue', col.mid='white', col.high='red', cex.dot = 1.5)
+
 plot(NA, xlim=c(0,5), ylim=c(0,5), bty='n',
      xaxt='n', yaxt='n', xlab='', ylab='')
-text(1,4,"Region by Z-score", pos=4)
+text(1,4,"Region by Z-score (by probability)", pos=4)
+
+cisTopicObject <- runUmap(cisTopicObject, target ='region')
 
 plotFeatures(cisTopicObject, method='Umap', target='region', topic_contr='Z-score', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=FALSE, col.low='blue', col.mid='white', col.high='red', cex.dot = 1.5)
+
+cisTopicObject <- runUmap(cisTopicObject, target ='region', n_components=3)
+
+plotFeatures(cisTopicObject, method='Umap', target='region', topic_contr='Z-score', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=3, legend=FALSE, col.low='blue', col.mid='white', col.high='red', cex.dot = 1.5)
+
+plot(NA, xlim=c(0,5), ylim=c(0,5), bty='n',
+     xaxt='n', yaxt='n', xlab='', ylab='')
+text(1,4,"Region by NormTop (by probability)", pos=4)
+
+cisTopicObject <- runUmap(cisTopicObject, target ='region')
+
+plotFeatures(cisTopicObject, method='Umap', target='region', topic_contr='NormTop', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=2, legend=FALSE, col.low='blue', col.mid='white', col.high='red', cex.dot = 1.5)
+
+cisTopicObject <- runUmap(cisTopicObject, target ='region', n_components=3)
+
+plotFeatures(cisTopicObject, method='Umap', target='region', topic_contr='NormTop', colorBy=NULL, cex.legend = 0.8, factor.max=.75, dim=3, legend=FALSE, col.low='blue', col.mid='white', col.high='red', cex.dot = 1.5)
+
 
 dev.off()
 
@@ -186,4 +328,15 @@ write.csv(cisTopicObject@selected.model$topics, file=snakemake@output[[5]])
 
 
 saveRDS(cisTopicObject, file=snakemake@output[[6]])
+
+#Not needed
+#write.csv(fica, file=snakemake@output[[7]])
+
 #getBedFiles(cisTopicObject, path='CisTopicBed_BRCA_SNA')
+ 
+write.csv(meta, file=snakemake@output[[7]])
+
+
+write.csv(object@binarized.cisTopics, file=snakemake@output[[7]])
+
+write.csv(meta, file=snakemake@output[[8]])
