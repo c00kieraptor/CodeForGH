@@ -6,6 +6,11 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import lzma
+import scipy
+import statistics
+
+
+
 #####
 
 
@@ -17,7 +22,7 @@ regScrPrtopic = pd.read_csv("RegScrPrtopic_BRCA-US_FULL.csv", delimiter=",")
 topicAssigToPatient = pd.read_csv("topicAssigToPatient_BRCA-US_FULL.csv", delimiter=",")
 
 """
-methTable = pdf.read_csv(snakemake.input[methTab], delimiter=",", compression="xz")
+methTable = pd.read_csv(snakemake.input[methTab], delimiter=",", compression="xz")
 regScrPrtopic = pd.read_csv(snakemake.input[regScrNorm], delimiter=",")
 regAssigUnormal = pd.read_csv(snakemake.input[regScrUnrm], delimiter=",")
 topicAssigToPatient = pd.read_csv(snakemake.input[topicAssig], delimiter=",")
@@ -26,8 +31,10 @@ topicAssigToPatient = pd.read_csv(snakemake.input[topicAssig], delimiter=",")
 
 #assign patients to topics, and topics to CpGs, so you can go from patients to CpGs
 
+
+
 """
-Following to find top topics per donor:
+Create a dict with topics as key and donors as values. Which topic the donors belong to is found by subtracting each value in the row of topicAssigToPatient by the mean of that row. Then the row with the highest value after the subtraction is found and this is the topic for that column/donor 
 """
 
 #Remove unnamed column with topic numbers and set those as rownames
@@ -46,6 +53,53 @@ for i, row in topicPatMean.T.iterrows():
 	topicPatdictValList.append(i)
 	index = row.idxmax()
 	topicPatDict[index] = topicPatdictValList
+
+
+"""
+#Finding number of values for each key:
+
+for key, value in topicPatDict.items():
+    print(key, len([item for item in value if item]))
+
+
+for key, value in topicPatDict.items():
+    print(key, len(list(filter(bool, value)))) 
+"""
+
+
+"""
+Find CpGs/rows above a certain treshold (Cutoff) for each column/topic_score. Merge with the rest of the row for the other columns. Remove CpGs not contributing much since small difference between topics.
+"""
+
+regScrPrTopicDrpd = regScrPrtopic.drop(["seqnames", "start", "end", "width", "nCounts", "nCells"], axis=1)
+
+dfForHM = pd.DataFrame(columns = list(regScrPrTopicDrpd))
+
+for COLUMN in regScrPrTopicDrpd.columns[1:]:
+    Median = statistics.median(regScrPrTopicDrpd[COLUMN])
+    Mean = statistics.mean(regScrPrTopicDrpd[COLUMN])
+    Max = max(regScrPrTopicDrpd[COLUMN])
+    Cutoff = 0.5																					
+    regScrSupProc = regScrPrTopicDrpd[regScrPrTopicDrpd[COLUMN] > Cutoff]                           #Keep only rows with value OVER Cutoff
+    dfForHM = pd.concat([dfForHM, regScrSupProc]).drop_duplicates().sort_values("Unnamed: 0")       #Create df with columns after cutoffs
+    name1 = COLUMN + "_Raw.png"                                                                     #
+    g = sns.violinplot(y = regScrPrTopicDrpd[COLUMN])
+    fig1 = g.get_figure()
+    fig1.savefig(name1)
+    plt.close()
+    name2 = COLUMN+"_Processed.png"
+    h = sns.violinplot(y = regScrSupProc[COLUMN])
+    fig2 = h.get_figure()
+    fig2.savefig(name2)
+    plt.close()
+
+dfForHM.to_csv("ProbeTopicScore.csv", index=True)
+
+"""
+The goal is to find metadata for the heatmap. To do this assign metadata to every donor in topicPatDict
+"""
+
+meta = pd.read_csv("/storage/mathelierarea/processed/petear/SnakemakeInputFiles/Meta/BRCA-US_sample_Info_260620.tsv", delimiter="\t")
 
 
 

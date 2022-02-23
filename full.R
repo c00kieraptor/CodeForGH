@@ -1,5 +1,5 @@
 #Creates proper matrix before using topic modeling and performing great analysis
-#
+
 library(Amelia)
 library(tidyverse)
 
