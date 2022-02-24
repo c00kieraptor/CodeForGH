@@ -101,7 +101,7 @@ The goal is to find metadata for the heatmap. To do this assign metadata to ever
 """
 meta = pd.read_csv("/storage/mathelierarea/processed/petear/analysis/test/meta.csv", delimiter=",")
 """
-meta = pd.read_csv((snakemake.input[methTab], delimiter=",")
+meta = pd.read_csv(snakemake.input[methTab], delimiter=",")
 
 
 
