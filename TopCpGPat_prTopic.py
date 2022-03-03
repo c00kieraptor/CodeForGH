@@ -109,7 +109,41 @@ meta = pd.read_csv(snakemake.input[methTab], delimiter=",")
 
 
 
+"""
+use binarized to find high rank CpGs
+"""
+"""
+bina = pd.read_csv("/storage/mathelierarea/processed/petear/analysis/test/te.csv", delimiter=",")
+"""
+bina = pd.read_csv(snakemake.input[binFrame], delimiter=",")
+bina = bina.drop("Unnamed: 0", axis=1)
 
+bina = bina.set_index("chrPos")
+binaDict ={col : bina[bina[col].notnull()].index.tolist() for col in bina.columns}
+
+
+for key, value in binaDict.items() :
+    print (key)
+
+
+
+
+#print(binaDict['Topic1'])
+
+
+
+binaDict = {}
+binaValList = []
+
+
+
+for column in bina.columns[1:]:
+	for value in bina.iterrows():
+		print(value)
+
+
+for label, content in bina.items()[1:]:
+	print(content)
 
 
 
