@@ -37,6 +37,9 @@ topicAssigToPatient = pd.read_csv(snakemake.input[topicAssig], delimiter=",")
 Create a dict with topics as key and donors as values. Which topic the donors belong to is found by subtracting each value in the row of topicAssigToPatient by the mean of that row. Then the row with the highest value after the subtraction is found and this is the topic for that column/donor 
 """
 
+#Add Topic to int in Unnamed: 0 column
+topicAssigToPatient["Unnamed: 0"] = "Topic" + topicAssigToPatient["Unnamed: 0"].astype(str)
+
 #Remove unnamed column with topic numbers and set those as rownames
 topicAsPatRownames = topicAssigToPatient.set_index("Unnamed: 0")
 topicAsPatRownames.index.names = [None]
@@ -110,7 +113,7 @@ meta = pd.read_csv(snakemake.input[methTab], delimiter=",")
 
 
 """
-use binarized to find high rank CpGs
+use binarized to find high rank CpGs: Patients -> Topics -> CpGs :: Patients -> CpG
 """
 """
 bina = pd.read_csv("/storage/mathelierarea/processed/petear/analysis/test/te.csv", delimiter=",")
