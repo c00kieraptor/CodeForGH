@@ -5,6 +5,7 @@ library(tidyverse)
 
 methTable <- read.table(snakemake@input[["CpG"]], header=TRUE, sep="\t")
 Coords <- read.table(snakemake@input[["coords"]])
+#Coords <- read.table("/storage/mathelierarea/processed/petear/SnakemakeInputFiles/BRCA-US_FULL.bed.hg19.wgEncodeHaibMethyl450CpgIslandDetails_emap.probes.bed")
 
 mergedCol <- unite(Coords, comb, V2, V3, sep = "-", remove = TRUE, na.rm = FALSE)
 mergedChrDone <- unite(mergedCol, Coords, V1, comb, sep = ":", remove = TRUE, na.rm = FALSE)
@@ -47,7 +48,7 @@ write.csv(methTable2, file=snakemake@output[[1]])
 #############PrepMeta###############
 
 samplemeta <- read.table(snakemake@input[["premeta"]], header=TRUE, sep="\t")
-
+#samplemeta <- read.table("/storage/mathelierarea/processed/petear/SnakemakeInputFiles/Meta/sampleinfo_TCGA_RNA_seq_cluster.txt", header=TRUE, sep="\t")
 
 ###OTHERS THAN BRCA::: _Subtype_mRNA', 'Subtype_Selected' & 'Subtype_Immune_Model_Based
 #metaframe <- samplemeta %>% select(icgc_donor_id, Subtype_Selected, Subtype_Immune_Model_Based)
@@ -57,19 +58,16 @@ samplemeta <- read.table(snakemake@input[["premeta"]], header=TRUE, sep="\t")
 metaframe <- samplemeta %>% select(donor_id, PAM50, ER.Status, PAM50_genefu, PR.Status, HER2.Final.Status)
 
 
-#replace NA with string
-metaframe.c <- metaframe %>% mutate_all(as.character)
-metaframe.c <- metaframe.c %>% replace(is.na(.), "NA")
 
 #replace numbers as such: 1=Negative, 2=Positive, and LuminalA and LuminalB to "Luminal A" and "Luminal B"
-metaframe.c$ER.Status <- gsub("1","Negative", metaframe.c$ER.Status)
-metaframe.c$ER.Status <- gsub("2","Positive", metaframe.c$ER.Status)
-metaframe.c$PAM50 <- gsub("LuminalA","Luminal A", metaframe.c$PAM50)
-metaframe.c$PAM50 <- gsub("LuminalB","Luminal B", metaframe.c$PAM50)
+metaframe$ER.Status <- gsub("1","Negative", metaframe$ER.Status)
+metaframe$ER.Status <- gsub("2","Positive", metaframe$ER.Status)
+metaframe$PAM50 <- gsub("LuminalA","Luminal A", metaframe$PAM50)
+metaframe$PAM50 <- gsub("LuminalB","Luminal B", metaframe$PAM50)
 
 #If redundancy in data (E.g same donors multiple times)
-#metaSD <- metaframe.c %>% distinct(icgc_donor_id, .keep_all = TRUE)
-metaSD <- metaframe.c %>% distinct(donor_id, .keep_all = TRUE)
+#metaSD <- metaframe %>% distinct(icgc_donor_id, .keep_all = TRUE)
+metaSD <- metaframe %>% distinct(donor_id, .keep_all = TRUE)
 
 #set rownames
 meta2 <- metaSD
@@ -80,16 +78,40 @@ meta <- meta2 %>% select(-1)
 
 
 ###########RemoveNonMetaCpGRows############
+#Cange to add metadata rows with NA for CpGs without metadata
+#Find CpGs without row in meta
+#
+#som e i col men ikke i row.
 
-drop <- c(rownames(meta))
-CpG.sample.tab = methTable2[,(names(methTable2) %in% drop)]
+MTList <- colnames(methTable2)
+metaList <- rownames(meta)
 
-#preserve memory:
+for (item in MTList)
+{
+    if (item %in% metaList==TRUE)
+    {
+        MTList <- MTList[! MTList %in% c(item)]
+    }
+}
+
+#MTList = list of rows needing to be added to metadata
+rn <- row.names(meta)
+meta[nrow(meta) + seq_along(MTList), ] <- NA 
+row.names(meta) <- c(rn, MTList)
+
+#meta <- meta[order(row.names(meta)),]
+
+#replace NA with string
+#meta <- meta %>% mutate_all(as.character)
+meta <- meta %>% replace(is.na(.), "NA")
+
+
+
+#free memory:
 rm(methTable)
 rm(Coords)
 rm(samplemeta)
 rm(metaframe)
-rm(metaframe.c)
 rm(metaSD)
 
 
@@ -102,7 +124,7 @@ PDF.name <- snakemake@output[[2]]
 #Removing NAs by deletion: (CHECK IF SHOULD USE AMPUTATION!!!
 #cpg <- CpG.sample.tab[complete.cases(CpG.sample.tab), ]
 
-cisTopicObject <- createcisTopicObject(is.acc=0.5, min.cells=0, min.regions=0, count.matrix=data.frame(CpG.sample.tab)) #Set is.acc=0 or is.acc=0.01 | min.cells=0, min.regions=0
+cisTopicObject <- createcisTopicObject(is.acc=0.5, min.cells=0, min.regions=0, count.matrix=data.frame(z)) #Set is.acc=0 or is.acc=0.01 | min.cells=0, min.regions=0
 
 cisTopicObject <- addCellMetadata(cisTopicObject, cell.data = meta)
 cisTopicObject <- runWarpLDAModels(cisTopicObject, topic=c(4:18), seed=123, nCores=4, addModels=FALSE)
@@ -335,7 +357,19 @@ saveRDS(cisTopicObject, file=snakemake@output[[6]])
  
 write.csv(meta, file=snakemake@output[[7]])
 
+#Create empty dataframe:
+df <- data.frame(matrix(ncol=2, nrow=1))
+colnames(df) <- c("chrPos","TopicX")
 
-write.csv(object@binarized.cisTopics, file=snakemake@output[[7]])
+#merge dataframes
+for (attr in attributes(cisTopicObject@binarized.cisTopics)$names)
+{
+    makeDF <- data.frame(cisTopicObject@binarized.cisTopics[attr])
+    rowColDF <- tibble::rownames_to_column(makeDF, "chrPos")
+    df <- merge(df, rowColDF, by="chrPos", all=TRUE)
+}
+df$TopicX <- NULL
+
+write.csv(df@binarized.cisTopics, file=snakemake@output[[7]])
 
 write.csv(meta, file=snakemake@output[[8]])
