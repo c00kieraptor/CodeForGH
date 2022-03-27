@@ -1,5 +1,5 @@
 projectTfDict = {
-"BRCA-US": ["FULL"]
+"BRCA-US-Test": ["FULL"]
 }
 
 ###  DEFs   ################################################################
@@ -17,7 +17,7 @@ for key, value in projectTfDict.items():
         PROJECT.append(key)
         TFACTOR.append(v)
 
-    
+
 print(PROJECT)
 print(TFACTOR)
 ############################################################################
@@ -26,7 +26,7 @@ rule all:
         expand("/storage/mathelierarea/processed/petear/analysis/{project}/MethylTable_{project}_{tfactor}.csv.xz", project=PROJECT, tfactor=TFACTOR), \
         expand("/storage/mathelierarea/processed/petear/analysis/{project}/{project}_{tfactor}_universe.bed", project=PROJECT, tfactor=TFACTOR), \
         expand("/storage/mathelierarea/processed/petear/analysis/{project}/Complete_{project}_{tfactor}.pdf", project=PROJECT, tfactor=TFACTOR)
-        
+
         ############################################################################
 
 
@@ -34,17 +34,17 @@ rule all:
 # #Rename probes to fit current project
 # if TFACTOR == "FULL":
 #     rule renameFullProbeslist:
-#         input: 
+#         input:
 #             "FULL.bed.hg19.wgEncodeHaibMethyl450CpgIslandDetails_emap.probes.bed"
 #         output:
-#             "{project}_FULL.bed.hg19.wgEncodeHaibMethyl450CpgIslandDetails_emap.probes.bed"    
+#             "{project}_FULL.bed.hg19.wgEncodeHaibMethyl450CpgIslandDetails_emap.probes.bed"
 #         shell:
 #             "cp *.bed.hg19.wgEncodeHaibMethyl450CpgIslandDetails_emap.probes.bed {wildcards.project}_FULL.bed.hg19.wgEncodeHaibMethyl450CpgIslandDetails_emap.probes.bed"
 
 #Remove rows(probes) with more than 50% NAs and impute the rest (Change FROM AMELIA to METHYLIMP when finished):
 #metadata with PAM50 and ER.Status is in same location with this name:: sampleinfo_TCGA_RNA_seq_cluster.txt
 #metadata with icgc_donor_id etc is at same location with this name::  {project}_sample_Info_260620.tsv
-rule FromRawToCis: 
+rule FromRawToCis:
     input:
         CpG = "/storage/mathelierarea/processed/petear/SnakemakeInputFiles/{project}_methylation450.sorted.perDonor.tsv",
         coords = "/storage/mathelierarea/processed/petear/SnakemakeInputFiles/{project}_{tfactor}.bed.hg19.wgEncodeHaibMethyl450CpgIslandDetails_emap.probes.bed",
@@ -55,24 +55,39 @@ rule FromRawToCis:
         "/storage/mathelierarea/processed/petear/analysis/{project}/topicAssigToPatient_{project}_{tfactor}.csv",
         "/storage/mathelierarea/processed/petear/analysis/{project}/RegScrPrtopic_{project}_{tfactor}.csv",
         "/storage/mathelierarea/processed/petear/analysis/{project}/RegAssigUnormal_{project}_{tfactor}.csv",
-        "/storage/mathelierarea/processed/petear/analysis/{project}/CTO_{project}_{tfactor}.rds"
+        "/storage/mathelierarea/processed/petear/analysis/{project}/CTO_{project}_{tfactor}.rds",
+        "/storage/mathelierarea/processed/petear/analysis/{project}/binarized_{project}_{tfactor}.csv",
+        "/storage/mathelierarea/processed/petear/analysis/{project}/meta_{project}_{tfactor}.csv
     priority:
         100
     script:
         "full.R"
 
-#Python to make violinplots from seaborn sort from CpGs and patients. 
-rule seabornViolin:
+#Python find highest contributing patient and CpG to topics and make violinplots with seaborn.
+rule topPatientCpG:
     input:
         methTab = "/storage/mathelierarea/processed/petear/analysis/{project}/MethylTable_{project}_{tfactor}.csv",
         regScrNorm = "/storage/mathelierarea/processed/petear/analysis/{project}/RegScrPrtopic_{project}_{tfactor}.csv",
         regScrUnrm = "/storage/mathelierarea/processed/petear/analysis/{project}/RegAssigUnormal_{project}_{tfactor}.csv",
         topicAssig = "/storage/mathelierarea/processed/petear/analysis/{project}/topicAssigToPatient_{project}_{tfactor}.csv",
+        binFrame = "/storage/mathelierarea/processed/petear/analysis/{project}/binarized_{project}_{tfactor}.csv"
     output:
         "/storage/mathelierarea/processed/petear/analysis/{project}/Violin_{project}_{tfactor}.pdf"
         "/storage/mathelierarea/processed/petear/analysis/{project}/ProbeTopicScore_{project}_{tfactor}.csv"
+    script:
+        "seabornViolin.py"
 
-#CSVs can be big so this rule compresses the CSV to XZ to save space. 
+
+#Make heatmap in ggplot2 from top patients and CpGs found in 'rule seabornViolin'
+rule probeHeatmap:
+    input:
+        "/storage/mathelierarea/processed/petear/analysis/{project}/ProbeTopicScore_{project}_{tfactor}.csv"
+    output:
+        "/storage/mathelierarea/processed/petear/analysis/{project}/PrbTpcScrHeatmap_{project}_{tfactor}.pdf"
+    script:
+        "Heatmap.R"
+
+#CSVs can be big so this rule compresses the CSV to XZ to save space.
 rule MethTabl_CSVtoXZ:
     input:
         CSV = "/storage/mathelierarea/processed/petear/analysis/{project}/MethylTable_{project}_{tfactor}.csv"
@@ -96,7 +111,7 @@ checkpoint get_bed:
 
 #Liftover bed from HG19 to HG38 and then delete the HG19 (To easier use snakemake with unibind)
 rule liftover:
-    input: 
+    input:
         HG19Bed = "/storage/mathelierarea/processed/petear/analysis/{project}/bedfiles_{project}_{tfactor}/Topic_{bednumber}.bed"
     output:
         HG38Bed = "/storage/mathelierarea/processed/petear/analysis/{project}/bedfiles_{project}_{tfactor}/Topic_{bednumber}_HG38.bed"
@@ -109,7 +124,7 @@ rule liftover:
 
 
 
-#make function to continue to work on sepearate bedfiles 
+#make function to continue to work on sepearate bedfiles
 def cont_work_bed(wildcards):
     checkpoint_output = checkpoints.get_bed.get(**wildcards).output[0]  #Collect each output (from output[0]) from checkpoint
     file_names = expand("/storage/mathelierarea/processed/petear/analysis/{project}/bedfiles_{project}_{tfactor}/Topic_{bednumber}_HG38.bed",
@@ -119,29 +134,29 @@ def cont_work_bed(wildcards):
     return file_names
 
 
-#Create universe (Background) 
+#Create universe (Background)
 rule universe:
     input:
         cont_work_bed
     output:
         Universe = "/storage/mathelierarea/processed/petear/analysis/{project}/{project}_{tfactor}_universe.bed"
     shell:
-        "cat /storage/mathelierarea/processed/petear/analysis/{wildcards.project}/bedfiles_{wildcards.project}_{wildcards.tfactor}/*_HG38.bed | bedtools sort | bedtools merge > {output}"    
+        "cat /storage/mathelierarea/processed/petear/analysis/{wildcards.project}/bedfiles_{wildcards.project}_{wildcards.tfactor}/*_HG38.bed | bedtools sort | bedtools merge > {output}"
 
 
 #Run unibind enrichment analysis on each bed file from checkpoint get_bed. (Should this also be a checkpoint?) .
 rule unibind:
-    input: 
+    input:
         topicBed = "/storage/mathelierarea/processed/petear/analysis/{project}/bedfiles_{project}_{tfactor}/Topic_{bednumber}_HG38.bed",
         Universe = "/storage/mathelierarea/processed/petear/analysis/{project}/{project}_{tfactor}_universe.bed"
     output:
         "/storage/mathelierarea/processed/petear/analysis/{project}/bedfiles_{project}_{tfactor}/UB_output_Topic{bednumber}/allEnrichments_swarm.pdf"
-        
+
     shell:
         "bash /storage/mathelierarea/processed/petear/UnibindFolder/UnibindMaster/bin/UniBind_enrich.sh oneSetBg /storage/mathelierarea/processed/petear/UnibindFolder/LolaUpdated/UniBind_LOLA.RDS {input.topicBed} {input.Universe} /storage/mathelierarea/processed/petear/analysis/{wildcards.project}/bedfiles_{wildcards.project}_{wildcards.tfactor}/UB_output_Topic{wildcards.bednumber}"
 
 
-#make function to continue to work on sepearate bedfiles 
+#make function to continue to work on sepearate bedfiles
 def unibindFunc(wildcards):
     checkpoint_output = checkpoints.get_bed.get(**wildcards).output[0]  #Collect each output (from output[0]) from checkpoint
     file_names = expand("/storage/mathelierarea/processed/petear/analysis/{project}/bedfiles_{project}_{tfactor}/UB_output_Topic{bednumber}/allEnrichments_swarm.pdf",
@@ -171,9 +186,9 @@ rule testFunc:
     input:
         unibindFunc
     output:
-        "test_{project}_{tfactor}.txt"  
+        "test_{project}_{tfactor}.txt"
     shell:
-        "echo 'done' > {output}"    
+        "echo 'done' > {output}"
 
 # #&& rm Topic_{wildcards.bednumber}.bed
 
@@ -184,7 +199,7 @@ rule rGREAT:
     output:
         GreatPDF = "/storage/mathelierarea/processed/petear/analysis/{project}/bedfiles_{project}_{tfactor}/Topic_{bednumber}_HG38.bed_GREAT.pdf"
     shell:
-        "Rscript /storage/mathelierarea/processed/petear/Snakemake2/GREAT.R /storage/mathelierarea/processed/petear/analysis/{wildcards.project}/bedfiles_{wildcards.project}_{wildcards.tfactor}/Topic_{wildcards.bednumber}_HG38.bed /storage/mathelierarea/processed/petear/analysis/{wildcards.project}/bedfiles_{wildcards.project}_{wildcards.tfactor}/{wildcards.bednumber}_HG38.bed_GREAT.pdf" 
+        "Rscript /storage/mathelierarea/processed/petear/Snakemake2/GREAT.R /storage/mathelierarea/processed/petear/analysis/{wildcards.project}/bedfiles_{wildcards.project}_{wildcards.tfactor}/Topic_{wildcards.bednumber}_HG38.bed /storage/mathelierarea/processed/petear/analysis/{wildcards.project}/bedfiles_{wildcards.project}_{wildcards.tfactor}/{wildcards.bednumber}_HG38.bed_GREAT.pdf"
 
 def rGREATFunc(wildcards):
     checkpoint_output = checkpoints.get_bed.get(**wildcards).output[0]  #Collect each output (from output[0]) from checkpoint
@@ -192,7 +207,7 @@ def rGREATFunc(wildcards):
                         project = wildcards.project,
                         tfactor = wildcards.tfactor,
                         bednumber = glob_wildcards(os.path.join(checkpoint_output, "Topic_{bednumber}.bed")).bednumber)
-    return file_names 
+    return file_names
 
 
 rule MergeGREATPDFs:
@@ -201,7 +216,7 @@ rule MergeGREATPDFs:
     output:
         "/storage/mathelierarea/processed/petear/analysis/{project}/GREAT_merged_{project}_{tfactor}.pdf"
     shell:
-        "pdfunite {input} {output}"     
+        "pdfunite {input} {output}"
 
 
 rule completePDF:
