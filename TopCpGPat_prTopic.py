@@ -1,7 +1,7 @@
 """
 Make heatmap based on the probabilites of CpGs belonging to a certain topic. 
 """
-
+"s"
 
 """
 The methylation level of CpGs in the topics, you could plot the complete distribution of values for a given set of patients associated with the corresponding topic and compare to other CpGs in the other topics. For instance, using violin plots with strips
