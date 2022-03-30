@@ -272,6 +272,6 @@ saveRDS(cisTopicObject, file=snakemake@output[[6]])
 #getBedFiles(cisTopicObject, path='CisTopicBed_BRCA_SNA')
 
 
-write.csv(object@binarized.cisTopics, file=snakemake@output[[7]])
+     snakemake@output[[7]])
 
 write.csv(meta, file=snakemake@output[[8]])
