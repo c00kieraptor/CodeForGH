@@ -99,12 +99,18 @@ rn <- row.names(meta)
 meta[nrow(meta) + seq_along(MTList), ] <- NA 
 row.names(meta) <- c(rn, MTList)
 
-#meta <- meta[order(row.names(meta)),]
 
 #replace NA with string
 #meta <- meta %>% mutate_all(as.character)
 meta <- meta %>% replace(is.na(.), "NA")
 
+#Sort meta
+meta <- meta[order(row.names(meta)),]
+
+MTList <- colnames(methTable2)
+
+#remove rows not in methTable2 (to be used in topicBina.py)
+meta <- meta[row.names(meta) %in% MTList, ]
 
 
 #free memory:
